@@ -7,6 +7,8 @@ import Index from "./pages/Index";
 import PostRequest from "./pages/PostRequest";
 import MyRequests from "./pages/MyRequests";
 import Profile from "./pages/Profile";
+import DeliveryMap from "./pages/DeliveryMap";
+import Chat from "./pages/Chat";
 import NotFound from "./pages/NotFound";
 import BottomTabBar from "./components/BottomTabBar";
 
@@ -23,6 +25,8 @@ const App = () => (
           <Route path="/post" element={<PostRequest />} />
           <Route path="/requests" element={<MyRequests />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/tracking/:id" element={<DeliveryMap />} />
+          <Route path="/chat/:id" element={<Chat />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         <BottomTabBar />
