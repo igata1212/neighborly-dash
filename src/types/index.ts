@@ -4,6 +4,8 @@ export type DeliveryPreference = "direct" | "delayed";
 
 export type RequestStatus = "awaiting" | "shopping" | "delivered";
 
+export type UrgencyLevel = "normal" | "rush" | "urgent";
+
 export interface GroceryRequest {
   id: string;
   productName: string;
@@ -13,6 +15,8 @@ export interface GroceryRequest {
   deliveryPreference: DeliveryPreference;
   status: RequestStatus;
   createdAt: string;
+  urgency: UrgencyLevel;
+  weightCategory: "basic" | "over3kg" | "over10kg";
 }
 
 export interface Store {
@@ -20,4 +24,19 @@ export interface Store {
   name: string;
   distance: string;
   icon: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: string;
+  isMe: boolean;
+}
+
+export interface DeliveryLocation {
+  lat: number;
+  lng: number;
+  label: string;
 }
