@@ -1,10 +1,10 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
+import { createContext, useContext, ReactNode } from "react";
 import { GroceryRequest } from "@/types";
-import { mockRequests as initialMockRequests } from "@/data/mockData";
+import { useRequests as useSupabaseRequests } from "@/hooks/useRequests";
 
 interface RequestsContextType {
   requests: GroceryRequest[];
-  addRequest: (request: Omit<GroceryRequest, "id" | "createdAt" | "createdAtTimestamp">) => void;
+  addRequest: (request: Omit<GroceryRequest, "id" | "createdAt" | "createdAtTimestamp" | "weightCategory" | "urgency">) => void;
   deleteRequest: (id: string) => void;
   cancelRequest: (id: string) => void;
   updateRequestStatus: (id: string, status: GroceryRequest["status"]) => void;
@@ -13,83 +13,58 @@ interface RequestsContextType {
 const RequestsContext = createContext<RequestsContextType | undefined>(undefined);
 
 export const RequestsProvider = ({ children }: { children: ReactNode }) => {
-  const [requests, setRequests] = useState<GroceryRequest[]>([]);
-  const timersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const { requests: dbRequests, addRequest: addDbRequest, updateRequest: updateDbRequest, cancelRequest: cancelDbRequest } = useSupabaseRequests();
 
-  // Load requests from localStorage on mount
-  useEffect(() => {
-    const saved = localStorage.getItem("requests");
-    if (saved) {
-      try {
-        setRequests(JSON.parse(saved));
-      } catch {
-        setRequests(initialMockRequests);
-      }
-    } else {
-      setRequests(initialMockRequests);
+  // Convert database requests to app format
+  const requests: GroceryRequest[] = dbRequests.map((req: any) => ({
+    id: req.id,
+    productName: req.product_name,
+    storeName: req.store_name,
+    reward: req.reward,
+    expiryTime: req.deadline ? new Date(req.deadline).toLocaleTimeString() : "By 6:00 PM",
+    deliveryPreference: req.delivery_preference as "direct" | "delayed",
+    status: req.status as GroceryRequest["status"],
+    urgency: req.urgency as "normal" | "rush" | "urgent",
+    weightCategory: "basic",
+    createdAt: new Date(req.created_at).toLocaleDateString(),
+    createdAtTimestamp: new Date(req.created_at).getTime(),
+  }));
+
+  const addRequest = async (request: Omit<GroceryRequest, "id" | "createdAt" | "createdAtTimestamp" | "weightCategory" | "urgency">) => {
+    try {
+      await addDbRequest({
+        orderer_id: "default-user-id", // TODO: Use actual user ID from auth
+        product_name: request.productName,
+        store_name: request.storeName,
+        reward: request.reward,
+        deadline: new Date().toISOString(),
+        delivery_preference: request.deliveryPreference,
+        urgency: "normal",
+        status: "awaiting",
+      });
+    } catch (error) {
+      console.error("Error adding request:", error);
     }
-  }, []);
-
-  // Save to localStorage whenever requests change
-  useEffect(() => {
-    localStorage.setItem("requests", JSON.stringify(requests));
-  }, [requests]);
-
-  // Set up auto-expiry timers for each request
-  useEffect(() => {
-    requests.forEach((request) => {
-      // Skip if timer already exists or request is delivered
-      if (timersRef.current.has(request.id) || request.status === "delivered") return;
-
-      const timeUntilExpiry = request.createdAtTimestamp + 60 * 60 * 1000 - Date.now();
-
-      if (timeUntilExpiry <= 0) {
-        // Already expired, delete immediately
-        deleteRequest(request.id);
-      } else {
-        // Set timer to auto-delete after expiry
-        const timer = setTimeout(() => {
-          deleteRequest(request.id);
-        }, timeUntilExpiry);
-
-        timersRef.current.set(request.id, timer);
-      }
-    });
-
-    // Cleanup: clear timers for deleted requests
-    return () => {
-      timersRef.current.forEach((timer) => clearTimeout(timer));
-    };
-  }, [requests]);
-
-  const addRequest = (request: Omit<GroceryRequest, "id" | "createdAt" | "createdAtTimestamp">) => {
-    const newRequest: GroceryRequest = {
-      ...request,
-      id: `${Date.now()}`,
-      createdAt: "just now",
-      createdAtTimestamp: Date.now(),
-    };
-    setRequests((prev) => [newRequest, ...prev]);
   };
 
-  const deleteRequest = (id: string) => {
-    // Clear timer if exists
-    const timer = timersRef.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timersRef.current.delete(id);
+  const deleteRequest = async (id: string) => {
+    try {
+      await cancelDbRequest(id);
+    } catch (error) {
+      console.error("Error deleting request:", error);
     }
-    setRequests((prev) => prev.filter((r) => r.id !== id));
   };
 
-  const cancelRequest = (id: string) => {
-    deleteRequest(id);
+  const cancelRequest = async (id: string) => {
+    await deleteRequest(id);
   };
 
-  const updateRequestStatus = (id: string, status: GroceryRequest["status"]) => {
-    setRequests((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status } : r))
-    );
+  const updateRequestStatus = async (id: string, status: GroceryRequest["status"]) => {
+    try {
+      await updateDbRequest(id, { status });
+    } catch (error) {
+      console.error("Error updating request status:", error);
+    }
   };
 
   return (

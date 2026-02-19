@@ -9,68 +9,53 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Info, ArrowLeft, ShoppingBag, ImagePlus, Zap, Clock, Flame } from "lucide-react";
 import { mockStores } from "@/data/mockData";
 import { toast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
-import type { UrgencyLevel } from "@/types";
-
-const PRICING = {
-  base: 250,
-  overweight3kg: 200,
-  overweight10kg: 400,
-  tip: 100,
-  urgencyMultiplier: { normal: 1, rush: 1.3, urgent: 1.6 },
-};
-
-const urgencyOptions: { value: UrgencyLevel; label: string; icon: React.ReactNode; description: string }[] = [
-  { value: "normal", label: "Normal", icon: <Clock className="h-4 w-4" />, description: "Standard delivery" },
-  { value: "rush", label: "Rush", icon: <Zap className="h-4 w-4" />, description: "+30% reward" },
-  { value: "urgent", label: "Urgent", icon: <Flame className="h-4 w-4" />, description: "+60% reward" },
-];
 
 const PostRequest = () => {
   const navigate = useNavigate();
+  const { addRequest } = useRequests();
+  
+  const [productName, setProductName] = useState("");
+  const [storeId, setStoreId] = useState("");
+  const [reward, setReward] = useState("3.00");
+  const [deliveryTime, setDeliveryTime] = useState("");
   const [isDelayed, setIsDelayed] = useState(false);
-  const [urgency, setUrgency] = useState<UrgencyLevel>("normal");
-  const [weightCategory, setWeightCategory] = useState<"basic" | "over3kg" | "over10kg">("basic");
-  const [includeTip, setIncludeTip] = useState(false);
 
-  const totalReward = useMemo(() => {
-    let total = PRICING.base;
-    if (weightCategory === "over3kg") total += PRICING.overweight3kg;
-    if (weightCategory === "over10kg") total += PRICING.overweight10kg;
-    total = Math.round(total * PRICING.urgencyMultiplier[urgency]);
-    if (includeTip) total += PRICING.tip;
-    return total;
-  }, [urgency, weightCategory, includeTip]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     toast({
       title: "Request Posted! 🎉",
-      description: `Your neighbors will see your ¥${totalReward} request shortly.`,
+      description: "Your neighbors will see your request shortly.",
     });
     navigate("/requests");
   };
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      <header className="sticky top-0 z-40 border-b border-border bg-card/90 backdrop-blur-md px-4 py-3">
+      <header className="sticky top-0 z-40 border-b border-border bg-card safe-bottom px-4 py-3">
         <div className="mx-auto flex max-w-md items-center gap-3">
           <button onClick={() => navigate(-1)} className="text-foreground p-1">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <h1 className="text-lg font-display font-bold">Post a Request</h1>
+          <h1 className="text-base font-bold">Post a Request</h1>
         </div>
       </header>
 
       <form onSubmit={handleSubmit} className="mx-auto max-w-md space-y-5 p-4 animate-fade-in">
         {/* Product */}
         <div className="space-y-2">
-          <Label htmlFor="product" className="font-display font-semibold">Product Name</Label>
-          <Input id="product" placeholder="e.g. Oat Milk (Oatly)" required className="bg-card" />
+          <Label htmlFor="product" className="font-semibold">Product Name</Label>
+          <Input 
+            id="product" 
+            placeholder="e.g. Oat Milk (Oatly)" 
+            required 
+            className="bg-card"
+            value={productName}
+            onChange={(e) => setProductName(e.target.value)}
+          />
         </div>
 
         {/* Photo placeholder */}
-        <div className="flex items-center justify-center rounded-2xl border-2 border-dashed border-border bg-muted/50 p-8 cursor-pointer hover:border-primary/40 transition-colors">
+        <div className="flex items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/50 p-8 cursor-pointer hover:border-primary/40 transition-colors">
           <div className="flex flex-col items-center gap-2 text-muted-foreground">
             <ImagePlus className="h-8 w-8" />
             <span className="text-sm font-medium">Add product photo (optional)</span>
@@ -79,8 +64,8 @@ const PostRequest = () => {
 
         {/* Store */}
         <div className="space-y-2">
-          <Label className="font-display font-semibold">Store</Label>
-          <Select required>
+          <Label className="font-semibold">Store</Label>
+          <Select value={storeId} onValueChange={setStoreId} required>
             <SelectTrigger className="bg-card">
               <SelectValue placeholder="Select a store" />
             </SelectTrigger>
@@ -96,29 +81,18 @@ const PostRequest = () => {
 
         {/* Urgency Level */}
         <div className="space-y-2">
-          <Label className="font-display font-semibold">Urgency Level</Label>
-          <div className="grid grid-cols-3 gap-2">
-            {urgencyOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setUrgency(opt.value)}
-                className={cn(
-                  "flex flex-col items-center gap-1.5 rounded-2xl border-2 p-3 transition-all",
-                  urgency === opt.value
-                    ? opt.value === "urgent"
-                      ? "border-destructive bg-destructive/10 text-destructive"
-                      : opt.value === "rush"
-                        ? "border-[hsl(var(--status-shopping))] bg-[hsl(var(--status-shopping))]/10 text-[hsl(var(--status-shopping))]"
-                        : "border-primary bg-accent text-accent-foreground"
-                    : "border-border bg-card text-muted-foreground hover:border-primary/30"
-                )}
-              >
-                {opt.icon}
-                <span className="text-xs font-bold">{opt.label}</span>
-                <span className="text-[10px] opacity-75">{opt.description}</span>
-              </button>
-            ))}
+          <Label htmlFor="reward" className="font-display font-semibold">Reward</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold">$</span>
+            <Input
+              id="reward"
+              type="number"
+              step="0.50"
+              min="1"
+              defaultValue="3.00"
+              className="pl-7 bg-card"
+              required
+            />
           </div>
         </div>
 
@@ -139,15 +113,22 @@ const PostRequest = () => {
 
         {/* Expiry */}
         <div className="space-y-2">
-          <Label htmlFor="expiry" className="font-display font-semibold">Deliver By</Label>
-          <Input id="expiry" type="time" required className="bg-card" />
+          <Label htmlFor="expiry" className="font-semibold">Deliver By</Label>
+          <Input 
+            id="expiry" 
+            type="time" 
+            required 
+            className="bg-card"
+            value={deliveryTime}
+            onChange={(e) => setDeliveryTime(e.target.value)}
+          />
         </div>
 
         {/* Delivery Preference */}
-        <div className="glass-card rounded-2xl p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-card p-4 card-glow space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Label className="font-display font-semibold">Anti-Encounter Mode</Label>
+              <Label className="font-semibold">Anti-Encounter Mode</Label>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -210,9 +191,9 @@ const PostRequest = () => {
           </div>
         </div>
 
-        <Button type="submit" size="lg" className="w-full rounded-2xl font-display font-bold text-base h-14">
+        <Button type="submit" size="lg" disabled={loading} className="w-full rounded-lg font-bold text-sm h-12 gradient-electric">
           <ShoppingBag className="h-5 w-5 mr-2" />
-          Post Request — ¥{totalReward}
+          Post Request
         </Button>
       </form>
     </div>
@@ -220,3 +201,6 @@ const PostRequest = () => {
 };
 
 export default PostRequest;
+
+export type RequestStatus = "pending" | "completed" | "cancelled";
+
