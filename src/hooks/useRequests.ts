@@ -9,7 +9,6 @@ export function useRequests() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch initial requests
     const fetchRequests = async () => {
       try {
         const { data, error } = await supabase
@@ -28,23 +27,34 @@ export function useRequests() {
 
     fetchRequests();
 
-    // Subscribe to real-time changes
     const channel = supabase
       .channel('requests')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'requests' },
         (payload) => {
+          const newRequest = payload.new as Request;
+          const oldRequest = payload.old as Request;
+
           if (payload.eventType === 'INSERT') {
-            setRequests([payload.new as Request, ...requests]);
+            setRequests((prev) => {
+              if (prev.some((request) => request.id === newRequest.id)) {
+                return prev;
+              }
+              return [newRequest, ...prev];
+            });
           } else if (payload.eventType === 'UPDATE') {
-            setRequests(
-              requests.map((r) =>
-                r.id === (payload.new as Request).id ? (payload.new as Request) : r
-              )
-            );
+            setRequests((prev) => {
+              const exists = prev.some((request) => request.id === newRequest.id);
+              if (!exists) {
+                return [newRequest, ...prev];
+              }
+              return prev.map((request) =>
+                request.id === newRequest.id ? newRequest : request
+              );
+            });
           } else if (payload.eventType === 'DELETE') {
-            setRequests(requests.filter((r) => r.id !== (payload.old as Request).id));
+            setRequests((prev) => prev.filter((request) => request.id !== oldRequest.id));
           }
         }
       )
@@ -94,6 +104,9 @@ export function useRequests() {
         .eq('id', id);
 
       if (error) throw error;
+
+      // Keep UI in sync even if realtime DELETE payload is delayed/missing.
+      setRequests((prev) => prev.filter((request) => request.id !== id));
     } catch (error) {
       console.error('Error canceling request:', error);
       throw error;

@@ -1,18 +1,45 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mockStores, mockRequests } from "@/data/mockData";
+import { mockStores } from "@/data/mockData";
 import StoreChip from "@/components/StoreChip";
 import RequestCard from "@/components/RequestCard";
 import heroImage from "@/assets/hero-neighborhood.png";
+import { useRequests } from "@/context/RequestsContext";
+import { toast } from "@/hooks/use-toast";
 
 const Index = () => {
   const navigate = useNavigate();
-  const activeRequests = mockRequests.filter((r) => r.status !== "delivered");
+  const { requests, cancelRequest } = useRequests();
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const activeRequests = requests.filter((request) => request.status !== "delivered");
+
+  const handleCancelRequest = async (requestId: string) => {
+    const confirmed = window.confirm("Cancel this request? Neighbors will no longer see it.");
+    if (!confirmed) return;
+
+    try {
+      setCancellingId(requestId);
+      await cancelRequest(requestId);
+      toast({
+        title: "Request canceled",
+        description: "Your request was removed successfully.",
+      });
+    } catch (error) {
+      console.error("Error canceling request:", error);
+      toast({
+        title: "Failed to cancel",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setCancellingId((current) => (current === requestId ? null : current));
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background pb-24">
-      {/* Hero */}
       <div className="relative h-44 overflow-hidden">
         <img
           src={heroImage}
@@ -31,7 +58,6 @@ const Index = () => {
       </div>
 
       <div className="mx-auto max-w-md px-4 space-y-6">
-        {/* Nearby Stores */}
         <section className="animate-fade-in">
           <h2 className="text-sm font-display font-bold text-muted-foreground uppercase tracking-wider mb-3">
             Nearby Stores
@@ -43,7 +69,6 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Post button */}
         <Button
           onClick={() => navigate("/post")}
           size="lg"
@@ -53,14 +78,23 @@ const Index = () => {
           Post a New Request
         </Button>
 
-        {/* Active Requests */}
         <section className="space-y-3">
           <h2 className="text-sm font-display font-bold text-muted-foreground uppercase tracking-wider">
             Your Active Requests ({activeRequests.length})
           </h2>
           {activeRequests.length > 0 ? (
-            activeRequests.map((req) => (
-              <RequestCard key={req.id} request={req} />
+            activeRequests.map((request) => (
+              <div key={request.id} className="space-y-2">
+                <RequestCard request={request} />
+                <button
+                  type="button"
+                  onClick={() => handleCancelRequest(request.id)}
+                  disabled={cancellingId === request.id}
+                  className="w-full rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm font-bold text-destructive transition-colors hover:bg-destructive/20 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {cancellingId === request.id ? "Cancelling..." : "Cancel Request"}
+                </button>
+              </div>
             ))
           ) : (
             <div className="flex flex-col items-center py-10 text-center text-muted-foreground animate-fade-in">

@@ -1,58 +1,127 @@
 import { createContext, useContext, ReactNode } from "react";
 import { GroceryRequest } from "@/types";
 import { useRequests as useSupabaseRequests } from "@/hooks/useRequests";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RequestsContextType {
   requests: GroceryRequest[];
-  addRequest: (request: Omit<GroceryRequest, "id" | "createdAt" | "createdAtTimestamp" | "weightCategory" | "urgency">) => void;
-  deleteRequest: (id: string) => void;
-  cancelRequest: (id: string) => void;
-  updateRequestStatus: (id: string, status: GroceryRequest["status"]) => void;
+  addRequest: (request: Omit<GroceryRequest, "id" | "createdAt" | "weightCategory" | "urgency" | "status">) => Promise<void>;
+  deleteRequest: (id: string) => Promise<void>;
+  cancelRequest: (id: string) => Promise<void>;
+  updateRequestStatus: (id: string, status: GroceryRequest["status"]) => Promise<void>;
 }
 
 const RequestsContext = createContext<RequestsContextType | undefined>(undefined);
 
-export const RequestsProvider = ({ children }: { children: ReactNode }) => {
-  const { requests: dbRequests, addRequest: addDbRequest, updateRequest: updateDbRequest, cancelRequest: cancelDbRequest } = useSupabaseRequests();
+const DEMO_ORDERER_STORAGE_KEY = "neighborly.orderer_id";
 
-  // Convert database requests to app format
-  const requests: GroceryRequest[] = dbRequests.map((req: any) => ({
-    id: req.id,
-    productName: req.product_name,
-    storeName: req.store_name,
-    reward: req.reward,
-    expiryTime: req.deadline ? new Date(req.deadline).toLocaleTimeString() : "By 6:00 PM",
-    deliveryPreference: req.delivery_preference as "direct" | "delayed",
-    status: req.status as GroceryRequest["status"],
-    urgency: req.urgency as "normal" | "rush" | "urgent",
+const normalizeStatus = (status: string): GroceryRequest["status"] => {
+  if (status === "delivered") return "delivered";
+  if (status === "shopping" || status === "scanned" || status === "dropoff" || status === "accepted") {
+    return "shopping";
+  }
+  return "awaiting";
+};
+
+const toDeadlineISOString = (deliveryTime: string) => {
+  const [hours, minutes] = deliveryTime.split(":").map(Number);
+  const deadline = new Date();
+
+  deadline.setHours(hours, minutes, 0, 0);
+
+  if (deadline.getTime() <= Date.now()) {
+    deadline.setDate(deadline.getDate() + 1);
+  }
+
+  return deadline.toISOString();
+};
+
+const getOrCreateDemoOrdererId = async () => {
+  const cachedId = localStorage.getItem(DEMO_ORDERER_STORAGE_KEY);
+
+  if (cachedId) {
+    const { data: existing } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", cachedId)
+      .single();
+
+    if (existing?.id) {
+      return existing.id;
+    }
+  }
+
+  const { data: existingByName } = await supabase
+    .from("users")
+    .select("id")
+    .eq("name", "Dash Demo User")
+    .eq("user_type", "orderer")
+    .limit(1)
+    .maybeSingle();
+
+  if (existingByName?.id) {
+    localStorage.setItem(DEMO_ORDERER_STORAGE_KEY, existingByName.id);
+    return existingByName.id;
+  }
+
+  const { data: created, error } = await supabase
+    .from("users")
+    .insert({
+      name: "Dash Demo User",
+      user_type: "orderer",
+      location: "Local",
+    })
+    .select("id")
+    .single();
+
+  if (error) throw error;
+
+  localStorage.setItem(DEMO_ORDERER_STORAGE_KEY, created.id);
+  return created.id;
+};
+
+export const RequestsProvider = ({ children }: { children: ReactNode }) => {
+  const {
+    requests: dbRequests,
+    addRequest: addDbRequest,
+    updateRequest: updateDbRequest,
+    cancelRequest: cancelDbRequest,
+  } = useSupabaseRequests();
+
+  const requests: GroceryRequest[] = dbRequests.map((request) => ({
+    id: request.id,
+    productName: request.product_name,
+    storeName: request.store_name,
+    reward: request.reward,
+    expiryTime: request.deadline
+      ? new Date(request.deadline).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      : "6:00 PM",
+    deliveryPreference: request.delivery_preference === "delayed" ? "delayed" : "direct",
+    status: normalizeStatus(request.status),
+    urgency: request.urgency === "rush" || request.urgency === "urgent" ? request.urgency : "normal",
     weightCategory: "basic",
-    createdAt: new Date(req.created_at).toLocaleDateString(),
-    createdAtTimestamp: new Date(req.created_at).getTime(),
+    createdAt: new Date(request.created_at).toLocaleDateString(),
   }));
 
-  const addRequest = async (request: Omit<GroceryRequest, "id" | "createdAt" | "createdAtTimestamp" | "weightCategory" | "urgency">) => {
-    try {
-      await addDbRequest({
-        orderer_id: "default-user-id", // TODO: Use actual user ID from auth
-        product_name: request.productName,
-        store_name: request.storeName,
-        reward: request.reward,
-        deadline: new Date().toISOString(),
-        delivery_preference: request.deliveryPreference,
-        urgency: "normal",
-        status: "awaiting",
-      });
-    } catch (error) {
-      console.error("Error adding request:", error);
-    }
+  const addRequest = async (
+    request: Omit<GroceryRequest, "id" | "createdAt" | "weightCategory" | "urgency" | "status">
+  ) => {
+    const ordererId = await getOrCreateDemoOrdererId();
+
+    await addDbRequest({
+      orderer_id: ordererId,
+      product_name: request.productName,
+      store_name: request.storeName,
+      reward: request.reward,
+      deadline: toDeadlineISOString(request.expiryTime),
+      delivery_preference: request.deliveryPreference,
+      urgency: "normal",
+      status: "awaiting",
+    });
   };
 
   const deleteRequest = async (id: string) => {
-    try {
-      await cancelDbRequest(id);
-    } catch (error) {
-      console.error("Error deleting request:", error);
-    }
+    await cancelDbRequest(id);
   };
 
   const cancelRequest = async (id: string) => {
@@ -60,11 +129,7 @@ export const RequestsProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateRequestStatus = async (id: string, status: GroceryRequest["status"]) => {
-    try {
-      await updateDbRequest(id, { status });
-    } catch (error) {
-      console.error("Error updating request status:", error);
-    }
+    await updateDbRequest(id, { status });
   };
 
   return (

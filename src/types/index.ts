@@ -1,5 +1,3 @@
-import { ReactNode } from "react";
-
 export type DeliveryPreference = "direct" | "delayed";
 
 export type RequestStatus = "awaiting" | "shopping" | "delivered";
@@ -24,6 +22,16 @@ export interface Store {
   name: string;
   distance: string;
   icon: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  brand?: string | null;
+  imageUrl?: string;
+  price?: number;
+  storeIds: string[];
+  category: string;
 }
 
 export interface ChatMessage {
